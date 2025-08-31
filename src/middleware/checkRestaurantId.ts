@@ -15,6 +15,7 @@ export const checkRestaurantExists = async (
   }
 
   const client = await initializeRedisClient();
+  console.log(restaurantId, "CLIENT : ", client)
   const restaurantKey = restaurantKeyById(restaurantId);
   const restaurantExists = await client.exists(restaurantKey);
 

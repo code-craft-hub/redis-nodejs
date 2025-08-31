@@ -4,6 +4,7 @@ export function getKeyName(...args: string[]) {
 
 
 export const restaurantKeyById = (id: string) => getKeyName("restaurant", id);
-export const cuisineKeyById = (id: string) => getKeyName("cuisine", id);
-export const reviewKeyById = (id: string) => getKeyName("review", id);
-export const userKeyById = (id: string) => getKeyName("user", id);
+export const reviewKeyById = (id: string) => getKeyName("reviews", id);
+export const reviewDetailsKeyById = (id: string) => getKeyName("review_details", id)
+
+// export const cuisineKeyById = (id: string) => getKeyName("cuisine", id);
