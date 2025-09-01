@@ -8,6 +8,7 @@ import {
   cuisinesKey,
   restaurantCuisinesKeyById,
   restaurantKeyById,
+  restaurantsByRatingKey,
   reviewDetailsKeyById,
   reviewKeyById,
 } from "../utils/keys";
@@ -16,6 +17,35 @@ import { checkRestaurantExists } from "../middleware/checkRestaurantId";
 import { Review, ReviewSchema } from "../schemas/review";
 
 export const restaurantRouter: Router = Router();
+
+restaurantRouter.get(
+  "/",
+  async (req: Request, res: Response, next: NextFunction) => {
+    const { page = 1, limit = 10 } = req.query;
+    const start = (Number(page) - 1) * Number(limit);
+    const end = start + Number(limit) - 1;
+
+    try {
+      const client = await initializeRedisClient();
+      const restaurantIds = await client.zRange(
+        restaurantsByRatingKey,
+        start,
+        end,
+        {
+          REV: true,
+        }
+      );
+
+      const restaurants = await Promise.all(
+        restaurantIds.map((id) => client.hGetAll(restaurantKeyById(id)))
+      );
+      successResponse(res, restaurants);
+      return;
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
 restaurantRouter.post(
   "/",
@@ -38,6 +68,10 @@ restaurantRouter.post(
           ])
         ),
         client.hSet(restaurantKey, hashData),
+        client.zAdd(restaurantsByRatingKey, {
+          score: 0,
+          value: id,
+        }),
       ]);
 
       successResponse(res, hashData, "Added new restaurant to redis");
@@ -73,11 +107,24 @@ restaurantRouter.post(
         timestamp: Date.now(),
         restaurantId,
       };
-      await Promise.all([
+      const restaurantKey = restaurantKeyById(restaurantId);
+      const [reviewCount, _setResult, totalStars] = await Promise.all([
         client.lPush(reviewKey, reviewId),
         client.hSet(reviewDetailsKey, reviewData),
+        client.hIncrByFloat(restaurantKey, "totalStars", data.rating),
       ]);
 
+      const averageRating = Number(
+        (Number(totalStars) / reviewCount).toFixed(1)
+      );
+      await Promise.all([
+        client.zAdd(restaurantsByRatingKey, {
+          score: averageRating,
+          value: restaurantId,
+        }),
+        client.hSet(restaurantKey, "avgStars", averageRating),
+        // client.hSet(restaurantKey, "reviewCount", reviewCount)
+      ]);
       successResponse(res, reviewData, "Review added to redis");
       return;
     } catch (error) {
@@ -135,7 +182,7 @@ restaurantRouter.get(
         client.sMembers(restaurantCuisinesKeyById(restaurantId)),
       ]);
       console.log(viewCount);
-      successResponse(res, {...restaurant, cuisines, viewCount});
+      successResponse(res, { ...restaurant, cuisines, viewCount });
       return;
     } catch (error) {
       console.error(error);
