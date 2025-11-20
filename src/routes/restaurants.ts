@@ -1,12 +1,19 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { validate } from "../middleware/validate";
-import { Restaurant, RestaurantSchema } from "../schemas/restaurant";
+import {
+  Restaurant,
+  RestaurantDetails,
+  RestaurantDetailsSchema,
+  RestaurantSchema,
+} from "../schemas/restaurant";
 import { initializeRedisClient } from "../utils/client";
 import { nanoid } from "nanoid";
 import {
   cuisineKey,
   cuisinesKey,
+  indexKey,
   restaurantCuisinesKeyById,
+  restaurantDetailsKeyById,
   restaurantKeyById,
   restaurantsByRatingKey,
   reviewDetailsKeyById,
@@ -18,6 +25,66 @@ import { checkRestaurantExists } from "../middleware/checkRestaurantId";
 import { Review, ReviewSchema } from "../schemas/review";
 
 export const restaurantRouter: Router = Router();
+
+restaurantRouter.post(
+  "/:restaurantId/details",
+  checkRestaurantExists,
+  validate(RestaurantDetailsSchema),
+  async (
+    req: Request<{ restaurantId: string }>,
+    res: Response,
+    next: NextFunction
+  ) => {
+    const { restaurantId } = req.params;
+    const data = req.body as RestaurantDetails;
+    try {
+      const client = await initializeRedisClient();
+      const restaurantDetailsKey = restaurantDetailsKeyById(restaurantId);
+      await client.json.set(restaurantDetailsKey, ".", data);
+      successResponse(res, {}, "Restaurant details added to redis");
+      return;
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+restaurantRouter.get(
+  "/search",
+  async (req: Request, res: Response, next: NextFunction) => {
+    const { q } = req.query;
+
+    try {
+      const client = await initializeRedisClient();
+      const results = await client.ft.search(indexKey, `@name:${q}`);
+      successResponse(res, results);
+      return;
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+restaurantRouter.get(
+  "/:restaurantId/details",
+  checkRestaurantExists,
+  async (
+    req: Request<{ restaurantId: string }>,
+    res: Response,
+    next: NextFunction
+  ) => {
+    const { restaurantId } = req.params;
+    try {
+      const client = await initializeRedisClient();
+      const restaurantDetailsKey = restaurantDetailsKeyById(restaurantId);
+      const details = await client.json.get(restaurantDetailsKey);
+      successResponse(res, details);
+      return;
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
 restaurantRouter.get(
   "/:restaurantId/weather",
@@ -271,3 +338,24 @@ restaurantRouter.delete(
     }
   }
 );
+
+// const data = {
+//   "links": [
+//     {
+//       "name": "Official website",
+//       "url": "https://www.examplerestaurant.com"
+//     },
+//     {
+//       "name": "Menu",
+//       "url": "https://www.examplerestaurant.com/menu"
+//     },
+//     {
+//       "name": "Reservations",
+//       "url": "https://www.examplerestaurant.com/reservations"
+//     }
+//   ],
+//   "contact": {
+//     "phone": "+1 (555) 123-4567",
+//     "email": "info@examplerestaurant.com"
+//   }
+// }
